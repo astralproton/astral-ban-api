@@ -85,14 +85,6 @@ app.post('/ban', (req, res) => {
   res.json({ success: true });
 });
 
-function leerBaneados() {
-  try {
-    return JSON.parse(fs.readFileSync('./baneados.json'));
-  } catch {
-    return [];
-  }
-}
-
 function guardarBaneados(lista) {
   fs.writeFileSync('./baneados.json', JSON.stringify(lista, null, 2));
 }
