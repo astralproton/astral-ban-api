@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import fs from 'fs';
+import { createClient } from '@supabase/supabase-js';
 
 const app = express();
 app.use(cors());
@@ -8,8 +9,13 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
+// Conexión con Supabase
+const SUPABASE_URL = 'https://szojjdcfphaawixewnkm.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN6b2pqZGNmcGhhYXdpeGV3bmttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE1MjUyNjMsImV4cCI6MjA2NzEwMTI2M30.EPRv9BOmT_iARe_D1tXBzLjJOP_92xLIOzv3ePLlSeg';
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Archivos locales (para contador y baneos)
 const CONTADOR_FILE = './contador.json';
-const USUARIOS_FILE = './usuarios.json';
 const BANEADOS_FILE = './baneados.json';
 
 // Funciones auxiliares
@@ -23,16 +29,6 @@ function leerContador() {
 function guardarContador(valor) {
   fs.writeFileSync(CONTADOR_FILE, JSON.stringify({ contador: valor }, null, 2));
 }
-function leerUsuarios() {
-  try {
-    return JSON.parse(fs.readFileSync(USUARIOS_FILE));
-  } catch {
-    return [];
-  }
-}
-function guardarUsuarios(lista) {
-  fs.writeFileSync(USUARIOS_FILE, JSON.stringify(lista, null, 2));
-}
 function leerBaneados() {
   try {
     return JSON.parse(fs.readFileSync(BANEADOS_FILE));
@@ -43,13 +39,25 @@ function leerBaneados() {
 function guardarBaneados(lista) {
   fs.writeFileSync(BANEADOS_FILE, JSON.stringify(lista, null, 2));
 }
+async function leerUsuarios() {
+  const { data } = await supabase
+    .from('usuarios')
+    .select('*')
+    .order('fecha', { ascending: false });
+  return data || [];
+}
+async function guardarUsuario(usuario) {
+  const { error } = await supabase
+    .from('usuarios')
+    .insert([usuario]);
+  return !error;
+}
 
-// Ruta de prueba
+// Rutas
 app.get('/', (req, res) => {
-  res.send('🚀 API Astral en línea');
+  res.send('🚀 API Astral conectada a Supabase');
 });
 
-// Generar nuevo ID
 app.get('/nuevo-usuario', (req, res) => {
   let contador = leerContador();
   const nuevoID = `astraluser${contador}`;
@@ -57,23 +65,26 @@ app.get('/nuevo-usuario', (req, res) => {
   res.json({ id: nuevoID });
 });
 
-// Registrar usuario
-app.post('/registrar-usuario', (req, res) => {
+app.post('/registrar-usuario', async (req, res) => {
   const { id, nombre } = req.body;
   if (!id || !nombre) return res.status(400).json({ error: 'Faltan datos' });
 
-  const usuarios = leerUsuarios();
-  usuarios.push({ id, nombre, fecha: new Date().toISOString() });
-  guardarUsuarios(usuarios);
-  res.json({ success: true });
+  const success = await guardarUsuario({
+    id,
+    nombre,
+    fecha: new Date().toISOString()
+  });
+
+  success
+    ? res.json({ success: true })
+    : res.status(500).json({ error: 'Error al guardar en Supabase' });
 });
 
-// Ver todos los usuarios
-app.get('/usuarios', (req, res) => {
-  res.json(leerUsuarios());
+app.get('/usuarios', async (req, res) => {
+  const users = await leerUsuarios();
+  res.json(users);
 });
 
-// Baneo
 app.post('/ban', (req, res) => {
   const { id } = req.body;
   if (!id) return res.status(400).json({ error: 'Falta el ID' });
@@ -85,7 +96,6 @@ app.post('/ban', (req, res) => {
   res.json({ success: true });
 });
 
-// Desbanear
 app.post('/unban', (req, res) => {
   const { id } = req.body;
   if (!id) return res.status(400).json({ error: 'Falta el ID' });
@@ -94,7 +104,6 @@ app.post('/unban', (req, res) => {
   res.json({ success: true });
 });
 
-// Verificar si está baneado
 app.post('/check-banned', (req, res) => {
   const { id } = req.body;
   const baneados = leerBaneados();
@@ -102,5 +111,5 @@ app.post('/check-banned', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 API Astral corriendo en puerto ${PORT}`);
+  console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`);
 });
