@@ -85,30 +85,41 @@ app.get('/usuarios', async (req, res) => {
   res.json(users);
 });
 
-app.post('/ban', (req, res) => {
+// Banear un usuario desde Supabase
+app.post('/ban', async (req, res) => {
   const { id } = req.body;
-  if (!id) return res.status(400).json({ error: 'Falta el ID' });
-  const baneados = leerBaneados();
-  if (!baneados.includes(id)) {
-    baneados.push(id);
-    guardarBaneados(baneados);
-  }
-  res.json({ success: true });
+  const { error } = await supabase
+    .from('usuarios')
+    .update({ baneado: true })
+    .eq('id', id);
+
+  res.json({ success: !error });
 });
 
-app.post('/unban', (req, res) => {
+// Desbanear
+app.post('/unban', async (req, res) => {
   const { id } = req.body;
-  if (!id) return res.status(400).json({ error: 'Falta el ID' });
-  const baneados = leerBaneados().filter(user => user !== id);
-  guardarBaneados(baneados);
-  res.json({ success: true });
+  const { error } = await supabase
+    .from('usuarios')
+    .update({ baneado: false })
+    .eq('id', id);
+
+  res.json({ success: !error });
 });
 
-app.post('/check-banned', (req, res) => {
+// Verificar si un usuario está baneado
+app.post('/check-banned', async (req, res) => {
   const { id } = req.body;
-  const baneados = leerBaneados();
-  res.json({ banned: baneados.includes(id) });
+  const { data, error } = await supabase
+    .from('usuarios')
+    .select('baneado')
+    .eq('id', id)
+    .single();
+
+  if (error || !data) return res.json({ banned: false });
+  res.json({ banned: data.baneado === true });
 });
+
 
 app.listen(PORT, () => {
   console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`);
