@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 
 // Conexión con Supabase
 const SUPABASE_URL = 'https://szojjdcfphaawixewnkm.supabase.co';
-const SUPABASE_KEY = 'TU_ANON_KEY';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN6b2pqZGNmcGhhYXdpeGV3bmttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE1MjUyNjMsImV4cCI6MjA2NzEwMTI2M30.EPRv9BOmT_iARe_D1tXBzLjJOP_92xLIOzv3ePLlSeg';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Archivos locales (solo para baneados)
@@ -24,6 +24,7 @@ function leerBaneados() {
     return [];
   }
 }
+
 function guardarBaneados(lista) {
   fs.writeFileSync(BANEADOS_FILE, JSON.stringify(lista, null, 2));
 }
@@ -38,7 +39,7 @@ async function leerUsuarios() {
 
 async function guardarUsuario(usuario) {
   const { error } = await supabase.from('usuarios').insert([usuario]);
-  if (error) console.error('❌ Error insertando usuario:', error.message);
+  if (error) console.error('Error guardando usuario:', error.message);
   return !error;
 }
 
@@ -60,7 +61,7 @@ app.post('/existe-id', async (req, res) => {
   res.json({ existe: !!data });
 });
 
-// Registrar con ID personalizado
+// Registrar usuario con ID personalizado
 app.post('/registrar-usuario', async (req, res) => {
   const { id, nombre } = req.body;
   if (!id || !nombre) return res.status(400).json({ error: 'Faltan datos' });
@@ -87,11 +88,37 @@ app.post('/registrar-usuario', async (req, res) => {
     : res.status(500).json({ error: 'Error al guardar en Supabase' });
 });
 
+// Obtener lista de usuarios
 app.get('/usuarios', async (req, res) => {
   const users = await leerUsuarios();
   res.json(users);
 });
 
+// Obtener estrellas de un usuario
+app.post('/monedas', async (req, res) => {
+  const { id } = req.body;
+  const { data, error } = await supabase
+    .from('usuarios')
+    .select('monedas')
+    .eq('id', id)
+    .single();
+
+  if (error || !data) return res.json({ monedas: 0 });
+  res.json({ monedas: data.monedas });
+});
+
+// Actualizar estrellas
+app.post('/set-monedas', async (req, res) => {
+  const { id, monedas } = req.body;
+  const { error } = await supabase
+    .from('usuarios')
+    .update({ monedas })
+    .eq('id', id);
+
+  res.json({ success: !error });
+});
+
+// Banear
 app.post('/ban', async (req, res) => {
   const { id } = req.body;
   const { error } = await supabase
@@ -102,6 +129,7 @@ app.post('/ban', async (req, res) => {
   res.json({ success: !error });
 });
 
+// Desbanear
 app.post('/unban', async (req, res) => {
   const { id } = req.body;
   const { error } = await supabase
@@ -112,6 +140,7 @@ app.post('/unban', async (req, res) => {
   res.json({ success: !error });
 });
 
+// Verificar si está baneado
 app.post('/check-banned', async (req, res) => {
   const { id } = req.body;
   const { data, error } = await supabase
