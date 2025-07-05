@@ -35,10 +35,10 @@ async function leerUsuarios() {
     .order('fecha', { ascending: false });
   return data || [];
 }
+
 async function guardarUsuario(usuario) {
-  const { error } = await supabase
-    .from('usuarios')
-    .insert([usuario]);
+  const { error } = await supabase.from('usuarios').insert([usuario]);
+  if (error) console.error('❌ Error insertando usuario:', error.message);
   return !error;
 }
 
@@ -50,12 +50,13 @@ app.get('/', (req, res) => {
 // Verificar si un ID ya existe
 app.post('/existe-id', async (req, res) => {
   const { id } = req.body;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('usuarios')
     .select('id')
     .eq('id', id)
-    .single();
+    .maybeSingle();
 
+  if (error) return res.status(500).json({ error: 'Error verificando ID' });
   res.json({ existe: !!data });
 });
 
@@ -64,21 +65,21 @@ app.post('/registrar-usuario', async (req, res) => {
   const { id, nombre } = req.body;
   if (!id || !nombre) return res.status(400).json({ error: 'Faltan datos' });
 
-  // Verificar si ese ID ya existe
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('usuarios')
     .select('id')
     .eq('id', id)
-    .single();
+    .maybeSingle();
 
+  if (error) return res.status(500).json({ error: 'Error verificando ID' });
   if (data) return res.status(409).json({ error: 'ID ya está en uso' });
 
   const success = await guardarUsuario({
     id,
     nombre,
     fecha: new Date().toISOString(),
-    monedas: 0,     // si usas estrellas
-    baneado: false  // estado inicial
+    monedas: 0,
+    baneado: false
   });
 
   success
