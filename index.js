@@ -120,49 +120,6 @@ app.post('/check-banned', async (req, res) => {
   res.json({ banned: data.baneado === true });
 });
 
-app.post('/monedas', async (req, res) => {
-  const { id } = req.body;
-  const { data, error } = await supabase
-    .from('usuarios')
-    .select('monedas')
-    .eq('id', id)
-    .single();
-  if (error || !data) return res.json({ monedas: 0 });
-  res.json({ monedas: data.monedas });
-});
-
-app.post('/set-monedas', async (req, res) => {
-  const { id, monedas } = req.body;
-  const { error } = await supabase
-    .from('usuarios')
-    .update({ monedas })
-    .eq('id', id);
-  res.json({ success: !error });
-});
-
-
-app.get('/estrellas/:id', async (req, res) => {
-    const { id } = req.params;
-    const { data, error } = await supabase
-        .from('usuarios')
-        .select('estrellas')
-        .eq('id', id)
-        .single();
-    if (error || !data) return res.json({ estrellas: 0 });
-    res.json({ estrellas: data.estrellas || 0 });
-});
-
-app.post('/estrellas/:id', async (req, res) => {
-    const { id } = req.params;
-    const { estrellas } = req.body;
-    if (typeof estrellas !== 'number') return res.status(400).json({ error: 'Valor inválido' });
-    const { error } = await supabase
-        .from('usuarios')
-        .update({ estrellas })
-        .eq('id', id);
-    if (error) return res.status(500).json({ error: 'No se pudo actualizar' });
-    res.json({ estrellas });
-});
 
 app.listen(PORT, () => {
   console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`);
