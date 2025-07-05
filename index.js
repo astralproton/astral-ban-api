@@ -14,7 +14,7 @@ const SUPABASE_URL = 'https://szojjdcfphaawixewnkm.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN6b2pqZGNmcGhhYXdpeGV3bmttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE1MjUyNjMsImV4cCI6MjA2NzEwMTI2M30.EPRv9BOmT_iARe_D1tXBzLjJOP_92xLIOzv3ePLlSeg';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Archivos locales (solo para baneados)
+// Archivos locales (para baneados)
 const BANEADOS_FILE = './baneados.json';
 
 function leerBaneados() {
@@ -79,7 +79,6 @@ app.post('/registrar-usuario', async (req, res) => {
     id,
     nombre,
     fecha: new Date().toISOString(),
-    monedas: 0,
     baneado: false
   });
 
@@ -94,31 +93,7 @@ app.get('/usuarios', async (req, res) => {
   res.json(users);
 });
 
-// Obtener estrellas de un usuario
-app.post('/monedas', async (req, res) => {
-  const { id } = req.body;
-  const { data, error } = await supabase
-    .from('usuarios')
-    .select('monedas')
-    .eq('id', id)
-    .single();
-
-  if (error || !data) return res.json({ monedas: 0 });
-  res.json({ monedas: data.monedas });
-});
-
-// Actualizar estrellas
-app.post('/set-monedas', async (req, res) => {
-  const { id, monedas } = req.body;
-  const { error } = await supabase
-    .from('usuarios')
-    .update({ monedas })
-    .eq('id', id);
-
-  res.json({ success: !error });
-});
-
-// Banear
+// Banear usuario
 app.post('/ban', async (req, res) => {
   const { id } = req.body;
   const { error } = await supabase
@@ -129,7 +104,7 @@ app.post('/ban', async (req, res) => {
   res.json({ success: !error });
 });
 
-// Desbanear
+// Desbanear usuario
 app.post('/unban', async (req, res) => {
   const { id } = req.body;
   const { error } = await supabase
@@ -140,7 +115,7 @@ app.post('/unban', async (req, res) => {
   res.json({ success: !error });
 });
 
-// Verificar si está baneado
+// Verificar si un usuario está baneado
 app.post('/check-banned', async (req, res) => {
   const { id } = req.body;
   const { data, error } = await supabase
