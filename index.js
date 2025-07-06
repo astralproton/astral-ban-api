@@ -62,26 +62,28 @@ app.post('/existe-id', async (req, res) => {
 });
 
 // Registrar usuario con ID personalizado
+// Registrar usuario con ID personalizado (MODIFICADO)
 app.post('/registrar-usuario', async (req, res) => {
   const { id, nombre } = req.body;
   if (!id || !nombre) return res.status(400).json({ error: 'Faltan datos' });
-
+  
   const { data, error } = await supabase
     .from('usuarios')
     .select('id')
     .eq('id', id)
     .maybeSingle();
-
+    
   if (error) return res.status(500).json({ error: 'Error verificando ID' });
   if (data) return res.status(409).json({ error: 'ID ya está en uso' });
-
+  
   const success = await guardarUsuario({
     id,
     nombre,
     fecha: new Date().toISOString(),
-    baneado: false
+    baneado: false,
+    points: 0  // AGREGAR ESTA LÍNEA
   });
-
+  
   success
     ? res.json({ success: true })
     : res.status(500).json({ error: 'Error al guardar en Supabase' });
@@ -126,6 +128,63 @@ app.post('/check-banned', async (req, res) => {
 
   if (error || !data) return res.json({ banned: false });
   res.json({ banned: data.baneado === true });
+});
+
+// Obtener puntos de un usuario
+// Obtener puntos de un usuario
+app.post('/get-points', async (req, res) => {
+  const { id } = req.body;
+  if (!id) return res.status(400).json({ error: 'ID requerido' });
+  
+  const { data, error } = await supabase
+    .from('usuarios')
+    .select('points')
+    .eq('id', id)
+    .single();
+    
+  if (error) return res.status(500).json({ error: 'Error obteniendo puntos' });
+  res.json({ points: data?.points || 0 });
+});
+
+// Establecer puntos de un usuario
+app.post('/set-points', async (req, res) => {
+  const { id, points } = req.body;
+  if (!id || points === undefined) return res.status(400).json({ error: 'ID y puntos requeridos' });
+  
+  const { error } = await supabase
+    .from('usuarios')
+    .update({ points: parseInt(points) })
+    .eq('id', id);
+    
+  if (error) return res.status(500).json({ error: 'Error actualizando puntos' });
+  res.json({ success: true });
+});
+
+// Agregar puntos a un usuario
+app.post('/add-points', async (req, res) => {
+  const { id, amount } = req.body;
+  if (!id || amount === undefined) return res.status(400).json({ error: 'ID y cantidad requeridos' });
+  
+  // Primero obtener puntos actuales
+  const { data: userData, error: getError } = await supabase
+    .from('usuarios')
+    .select('points')
+    .eq('id', id)
+    .single();
+    
+  if (getError) return res.status(500).json({ error: 'Error obteniendo puntos actuales' });
+  
+  const currentPoints = userData?.points || 0;
+  const newPoints = currentPoints + parseInt(amount);
+  
+  // Actualizar con nuevos puntos
+  const { error: updateError } = await supabase
+    .from('usuarios')
+    .update({ points: newPoints })
+    .eq('id', id);
+    
+  if (updateError) return res.status(500).json({ error: 'Error actualizando puntos' });
+  res.json({ success: true, newPoints });
 });
 
 app.listen(PORT, () => {
