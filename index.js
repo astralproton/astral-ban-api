@@ -130,63 +130,6 @@ app.post('/check-banned', async (req, res) => {
   res.json({ banned: data.baneado === true });
 });
 
-// Obtener puntos de un usuario
-// Obtener puntos de un usuario
-app.post('/get-points', async (req, res) => {
-  const { id } = req.body;
-  if (!id) return res.status(400).json({ error: 'ID requerido' });
-  
-  const { data, error } = await supabase
-    .from('usuarios')
-    .select('points')
-    .eq('id', id)
-    .single();
-    
-  if (error) return res.status(500).json({ error: 'Error obteniendo puntos' });
-  res.json({ points: data?.points || 0 });
-});
-
-// Establecer puntos de un usuario
-app.post('/set-points', async (req, res) => {
-  const { id, points } = req.body;
-  if (!id || points === undefined) return res.status(400).json({ error: 'ID y puntos requeridos' });
-  
-  const { error } = await supabase
-    .from('usuarios')
-    .update({ points: parseInt(points) })
-    .eq('id', id);
-    
-  if (error) return res.status(500).json({ error: 'Error actualizando puntos' });
-  res.json({ success: true });
-});
-
-// Agregar puntos a un usuario
-app.post('/add-points', async (req, res) => {
-  const { id, amount } = req.body;
-  if (!id || amount === undefined) return res.status(400).json({ error: 'ID y cantidad requeridos' });
-  
-  // Primero obtener puntos actuales
-  const { data: userData, error: getError } = await supabase
-    .from('usuarios')
-    .select('points')
-    .eq('id', id)
-    .single();
-    
-  if (getError) return res.status(500).json({ error: 'Error obteniendo puntos actuales' });
-  
-  const currentPoints = userData?.points || 0;
-  const newPoints = currentPoints + parseInt(amount);
-  
-  // Actualizar con nuevos puntos
-  const { error: updateError } = await supabase
-    .from('usuarios')
-    .update({ points: newPoints })
-    .eq('id', id);
-    
-  if (updateError) return res.status(500).json({ error: 'Error actualizando puntos' });
-  res.json({ success: true, newPoints });
-});
-
 app.listen(PORT, () => {
   console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`);
 });
