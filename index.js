@@ -81,7 +81,6 @@ app.post('/registrar-usuario', async (req, res) => {
     nombre,
     fecha: new Date().toISOString(),
     baneado: false,
-    points: 0  // AGREGAR ESTA LÍNEA
   });
   
   success
