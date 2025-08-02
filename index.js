@@ -4,7 +4,10 @@ import fs from 'fs';
 import { createClient } from '@supabase/supabase-js';
 
 const app = express();
-app.use(cors());
+app.use(cors({
+    origin: ['http://127.0.0.1:5500', 'http://localhost:5500', 'https://astralproton.github.io/astral'],
+    credentials: true
+}));
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
