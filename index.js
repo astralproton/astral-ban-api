@@ -129,6 +129,160 @@ app.post('/check-banned', async (req, res) => {
   res.json({ banned: data.baneado === true });
 });
 
+// Obtener monedas del usuario
+app.get('/api/user/coins', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'userId es requerido' });
+    }
+
+    const { data, error } = await supabase
+      .from('usuarios')
+      .select('coins')
+      .eq('id', userId)
+      .single();
+
+    if (error || !data) {
+      // Si el usuario no existe, devolver 0 monedas
+      return res.json({ coins: 0 });
+    }
+
+    res.json({ coins: data.coins || 0 });
+  } catch (error) {
+    console.error('Error obteniendo monedas:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// Actualizar monedas del usuario
+app.post('/api/user/coins', async (req, res) => {
+  try {
+    const { userId, coins } = req.body;
+    
+    if (!userId || coins === undefined) {
+      return res.status(400).json({ error: 'userId y coins son requeridos' });
+    }
+
+    if (typeof coins !== 'number' || coins < 0) {
+      return res.status(400).json({ error: 'coins debe ser un número positivo' });
+    }
+
+    const { error } = await supabase
+      .from('usuarios')
+      .update({ 
+        coins: coins,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId);
+
+    if (error) {
+      console.error('Error actualizando monedas:', error);
+      return res.status(500).json({ error: 'Error actualizando monedas' });
+    }
+
+    res.json({ success: true, coins: coins });
+  } catch (error) {
+    console.error('Error actualizando monedas:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// Obtener datos de la tienda del usuario
+app.get('/api/user/shop', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'userId es requerido' });
+    }
+
+    const { data, error } = await supabase
+      .from('user_shop_data')
+      .select('shop_data')
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !data) {
+      // Si el usuario no existe, crear registro vacío
+      const { error: insertError } = await supabase
+        .from('user_shop_data')
+        .insert([{
+          user_id: userId,
+          shop_data: {},
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }]);
+
+      if (insertError) {
+        console.error('Error creando datos de tienda:', insertError);
+      }
+
+      return res.json({ shopData: {} });
+    }
+
+    res.json({ shopData: data.shop_data || {} });
+  } catch (error) {
+    console.error('Error obteniendo datos de tienda:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// Actualizar datos de la tienda del usuario
+app.post('/api/user/shop', async (req, res) => {
+  try {
+    const { userId, shopData } = req.body;
+    
+    if (!userId || !shopData) {
+      return res.status(400).json({ error: 'userId y shopData son requeridos' });
+    }
+
+    // Intentar actualizar primero
+    const { data: existingData } = await supabase
+      .from('user_shop_data')
+      .select('id')
+      .eq('user_id', userId)
+      .single();
+
+    if (existingData) {
+      // Usuario existe, actualizar
+      const { error } = await supabase
+        .from('user_shop_data')
+        .update({ 
+          shop_data: shopData,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Error actualizando datos de tienda:', error);
+        return res.status(500).json({ error: 'Error actualizando datos de tienda' });
+      }
+    } else {
+      // Usuario no existe, crear
+      const { error } = await supabase
+        .from('user_shop_data')
+        .insert([{
+          user_id: userId,
+          shop_data: shopData,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }]);
+
+      if (error) {
+        console.error('Error creando datos de tienda:', error);
+        return res.status(500).json({ error: 'Error creando datos de tienda' });
+      }
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error guardando datos de tienda:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`);
 });
