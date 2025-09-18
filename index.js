@@ -109,6 +109,11 @@ app.post("/register", async (req, res) => {
       fecha: new Date().toISOString(),
       baneado: false,
       coins: 0,
+      avatar: null,
+      bio: null,
+      edad: null,
+      apellido: null,
+      genero: null,
     })
 
     if (success) {
@@ -210,6 +215,11 @@ app.post("/registrar-usuario", async (req, res) => {
     fecha: new Date().toISOString(),
     baneado: false,
     coins: 0,
+    avatar: null,
+    bio: null,
+    edad: null,
+    apellido: null,
+    genero: null,
   })
 
   success ? res.json({ success: true }) : res.status(500).json({ error: "Error al guardar en Supabase" })
@@ -219,6 +229,17 @@ app.post("/registrar-usuario", async (req, res) => {
 app.get("/usuarios", async (req, res) => {
   const users = await leerUsuarios()
   res.json(users)
+})
+
+// Actualizar perfil de usuario (NUEVO)
+app.patch("/usuarios/:id", async (req, res) => {
+  const { id } = req.params;
+  const { nombre, avatar, bio, edad, apellido, genero } = req.body;
+  const { error } = await supabase.from("usuarios").update({
+    nombre, avatar, bio, edad, apellido, genero
+  }).eq("id", id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
 })
 
 // Banear usuario
