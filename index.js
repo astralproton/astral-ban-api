@@ -24,7 +24,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "astral-secret-key-2024"
 
 // Conexión con Supabase
 const SUPABASE_URL = "https://szojjdcfphaawixewnkm.supabase.co"
-const SUPABASE_KEY = "TU_SUPABASE_KEY"
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN6b2pqZGNmcGhhYXdpeGV3bmttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE1MjUyNjMsImV4cCI6MjA2NzEwMTI2M30.EPRv9BOmT_iARe_D1tXBzLjJOP_92xLIOzv3ePLlSeg"
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 // Archivos locales (para baneados)
