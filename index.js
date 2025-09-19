@@ -364,6 +364,73 @@ app.post("/api/user/shop", async (req, res) => {
   }
 })
 
+// --- SISTEMA DE AMIGOS ---
+// Enviar solicitud de amistad
+app.post("/amigos/solicitar", async (req, res) => {
+  const { de, para } = req.body;
+  if (!de || !para || de === para) return res.status(400).json({ error: "Datos inválidos" });
+  // Verifica si ya existe una solicitud pendiente o amistad
+  const { data: existente } = await supabase
+    .from("amigos")
+    .select("*")
+    .or(`and(de.eq.${de},para.eq.${para}),and(de.eq.${para},para.eq.${de})`)
+    .in("estado", ["pendiente", "aceptado"])
+    .maybeSingle();
+  if (existente) return res.status(409).json({ error: "Ya existe una solicitud o amistad" });
+  const { error } = await supabase.from("amigos").insert([{ de, para, estado: "pendiente", fecha: new Date().toISOString() }]);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+// Listar solicitudes recibidas
+app.get("/amigos/solicitudes/:userId", async (req, res) => {
+  const { userId } = req.params;
+  const { data, error } = await supabase
+    .from("amigos")
+    .select("*")
+    .eq("para", userId)
+    .eq("estado", "pendiente");
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// Listar amigos (aceptados)
+app.get("/amigos/lista/:userId", async (req, res) => {
+  const { userId } = req.params;
+  const { data, error } = await supabase
+    .from("amigos")
+    .select("*")
+    .or(`de.eq.${userId},para.eq.${userId}`)
+    .eq("estado", "aceptado");
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// Aceptar/rechazar solicitud
+app.post("/amigos/responder", async (req, res) => {
+  const { id, aceptar } = req.body;
+  if (!id) return res.status(400).json({ error: "ID requerido" });
+  const { error } = await supabase
+    .from("amigos")
+    .update({ estado: aceptar ? "aceptado" : "rechazado" })
+    .eq("id", id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+// Eliminar amigo
+app.post("/amigos/eliminar", async (req, res) => {
+  const { userId, amigoId } = req.body;
+  if (!userId || !amigoId) return res.status(400).json({ error: "Datos requeridos" });
+  const { error } = await supabase
+    .from("amigos")
+    .delete()
+    .or(`and(de.eq.${userId},para.eq.${amigoId}),and(de.eq.${amigoId},para.eq.${userId})`)
+    .eq("estado", "aceptado");
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`)
 })
