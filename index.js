@@ -68,9 +68,20 @@ const verifyToken = (req, res, next) => {
   }
 }
 
+// Middleware para roles
+function requireRole(roles) {
+  return (req, res, next) => {
+    const userRol = req.user.rol;
+    if (!roles.includes(userRol)) {
+      return res.status(403).json({ error: "No tienes permisos suficientes" });
+    }
+    next();
+  };
+}
+
 // Rutas
 app.get("/", (req, res) => {
-  res.send("🚀 API Astral conectada a Supabase con autenticación")
+  res.send("🚀 API Astral conectada a Supabase con autenticación y roles")
 })
 
 // Registro de usuario con contraseña
@@ -90,7 +101,7 @@ app.post("/register", async (req, res) => {
     }
     // Encriptar contraseña
     const hashedPassword = await bcrypt.hash(password, 10)
-    // Crear usuario
+    // Crear usuario (rol por defecto: usuario)
     const success = await guardarUsuario({
       id: username,
       nombre: name,
@@ -103,16 +114,17 @@ app.post("/register", async (req, res) => {
       edad: null,
       apellido: null,
       genero: null,
-      insignia: null,   // NUEVO
-      estrellas: 0      // NUEVO
+      insignia: null,
+      estrellas: 0,
+      rol: "usuario"
     })
     if (success) {
       // Generar token JWT
-      const token = jwt.sign({ userId: username, name: name }, JWT_SECRET, { expiresIn: "7d" })
+      const token = jwt.sign({ userId: username, name: name, rol: "usuario" }, JWT_SECRET, { expiresIn: "7d" })
       res.json({
         success: true,
         token,
-        user: { id: username, name: name },
+        user: { id: username, name: name, rol: "usuario" },
       })
     } else {
       res.status(500).json({ error: "Error al crear la cuenta" })
@@ -133,7 +145,7 @@ app.post("/login", async (req, res) => {
     // Buscar usuario
     const { data: user, error } = await supabase
       .from("usuarios")
-      .select("id, nombre, password, baneado")
+      .select("id, nombre, password, baneado, rol")
       .eq("id", username)
       .single()
     if (error || !user) {
@@ -148,12 +160,12 @@ app.post("/login", async (req, res) => {
     if (!validPassword) {
       return res.status(401).json({ error: "Usuario o contraseña incorrectos" })
     }
-    // Generar token JWT
-    const token = jwt.sign({ userId: user.id, name: user.nombre }, JWT_SECRET, { expiresIn: "7d" })
+    // Generar token JWT con rol
+    const token = jwt.sign({ userId: user.id, name: user.nombre, rol: user.rol || "usuario" }, JWT_SECRET, { expiresIn: "7d" })
     res.json({
       success: true,
       token,
-      user: { id: user.id, name: user.nombre },
+      user: { id: user.id, name: user.nombre, rol: user.rol || "usuario" },
     })
   } catch (error) {
     console.error("Error en login:", error)
@@ -165,9 +177,20 @@ app.post("/login", async (req, res) => {
 app.get("/verify-token", verifyToken, (req, res) => {
   res.json({
     valid: true,
-    user: { id: req.user.userId, name: req.user.name },
+    user: { id: req.user.userId, name: req.user.name, rol: req.user.rol },
   })
 })
+
+// Cambiar rol de usuario (solo Dueño y Admin Senior)
+app.post("/usuarios/:id/rol", verifyToken, requireRole(["owner", "admin_senior"]), async (req, res) => {
+  const { id } = req.params;
+  const { rol } = req.body;
+  const rolesValidos = ["owner", "admin_senior", "admin", "amigo", "usuario"];
+  if (!rolesValidos.includes(rol)) return res.status(400).json({ error: "Rol inválido" });
+  const { error } = await supabase.from("usuarios").update({ rol }).eq("id", id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
 
 // Verificar si un ID ya existe
 app.post("/existe-id", async (req, res) => {
@@ -196,7 +219,8 @@ app.post("/registrar-usuario", async (req, res) => {
     apellido: null,
     genero: null,
     insignia: null,
-    estrellas: 0
+    estrellas: 0,
+    rol: "usuario"
   })
   success ? res.json({ success: true }) : res.status(500).json({ error: "Error al guardar en Supabase" })
 })
@@ -226,15 +250,15 @@ app.patch("/usuarios/:id", async (req, res) => {
   res.json({ success: true });
 })
 
-// Banear usuario
-app.post("/ban", async (req, res) => {
+// Banear usuario (solo Admin o superior)
+app.post("/ban", verifyToken, requireRole(["owner", "admin_senior", "admin"]), async (req, res) => {
   const { id } = req.body
   const { error } = await supabase.from("usuarios").update({ baneado: true }).eq("id", id)
   res.json({ success: !error })
 })
 
-// Desbanear usuario
-app.post("/unban", async (req, res) => {
+// Desbanear usuario (solo Admin o superior)
+app.post("/unban", verifyToken, requireRole(["owner", "admin_senior", "admin"]), async (req, res) => {
   const { id } = req.body
   const { error } = await supabase.from("usuarios").update({ baneado: false }).eq("id", id)
   res.json({ success: !error })
@@ -266,8 +290,8 @@ app.get("/api/user/coins", async (req, res) => {
   }
 })
 
-// Actualizar monedas del usuario
-app.post("/api/user/coins", async (req, res) => {
+// Actualizar monedas del usuario (solo Admin o superior)
+app.post("/api/user/coins", verifyToken, requireRole(["owner", "admin_senior", "admin"]), async (req, res) => {
   try {
     const { userId, coins } = req.body
     if (!userId || coins === undefined) {
@@ -323,8 +347,8 @@ app.get("/api/user/shop", async (req, res) => {
   }
 })
 
-// Actualizar datos de la tienda del usuario
-app.post("/api/user/shop", async (req, res) => {
+// Actualizar datos de la tienda del usuario (solo Admin Senior o superior)
+app.post("/api/user/shop", verifyToken, requireRole(["owner", "admin_senior"]), async (req, res) => {
   try {
     const { userId, shopData } = req.body
     if (!userId || !shopData) {
@@ -367,7 +391,7 @@ app.post("/api/user/shop", async (req, res) => {
 // --- SISTEMA DE AMIGOS ---
 // Enviar solicitud de amistad
 app.post("/amigos/solicitar", async (req, res) => {
-  const { de, para } = req.body;
+  const { de, para, mensaje = "" } = req.body;
   if (!de || !para || de === para) return res.status(400).json({ error: "Datos inválidos" });
   // Verifica si ya existe una solicitud pendiente o amistad
   const { data: existente } = await supabase
@@ -377,7 +401,7 @@ app.post("/amigos/solicitar", async (req, res) => {
     .in("estado", ["pendiente", "aceptado"])
     .maybeSingle();
   if (existente) return res.status(409).json({ error: "Ya existe una solicitud o amistad" });
-  const { error } = await supabase.from("amigos").insert([{ de, para, estado: "pendiente", fecha: new Date().toISOString() }]);
+  const { error } = await supabase.from("amigos").insert([{ de, para, estado: "pendiente", mensaje, fecha: new Date().toISOString() }]);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
 });
@@ -427,22 +451,6 @@ app.post("/amigos/eliminar", async (req, res) => {
     .delete()
     .or(`and(de.eq.${userId},para.eq.${amigoId}),and(de.eq.${amigoId},para.eq.${userId})`)
     .eq("estado", "aceptado");
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true });
-});
-
-app.post("/amigos/solicitar", async (req, res) => {
-  const { de, para, mensaje = "" } = req.body;
-  if (!de || !para || de === para) return res.status(400).json({ error: "Datos inválidos" });
-  // Verifica si ya existe una solicitud pendiente o amistad
-  const { data: existente } = await supabase
-    .from("amigos")
-    .select("*")
-    .or(`and(de.eq.${de},para.eq.${para}),and(de.eq.${para},para.eq.${de})`)
-    .in("estado", ["pendiente", "aceptado"])
-    .maybeSingle();
-  if (existente) return res.status(409).json({ error: "Ya existe una solicitud o amistad" });
-  const { error } = await supabase.from("amigos").insert([{ de, para, estado: "pendiente", mensaje, fecha: new Date().toISOString() }]);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
 });
