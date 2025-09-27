@@ -431,6 +431,22 @@ app.post("/amigos/eliminar", async (req, res) => {
   res.json({ success: true });
 });
 
+app.post("/amigos/solicitar", async (req, res) => {
+  const { de, para, mensaje = "" } = req.body;
+  if (!de || !para || de === para) return res.status(400).json({ error: "Datos inválidos" });
+  // Verifica si ya existe una solicitud pendiente o amistad
+  const { data: existente } = await supabase
+    .from("amigos")
+    .select("*")
+    .or(`and(de.eq.${de},para.eq.${para}),and(de.eq.${para},para.eq.${de})`)
+    .in("estado", ["pendiente", "aceptado"])
+    .maybeSingle();
+  if (existente) return res.status(409).json({ error: "Ya existe una solicitud o amistad" });
+  const { error } = await supabase.from("amigos").insert([{ de, para, estado: "pendiente", mensaje, fecha: new Date().toISOString() }]);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`)
 })
