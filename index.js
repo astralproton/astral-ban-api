@@ -4,7 +4,6 @@ import fs from "fs"
 import bcrypt from "bcrypt"
 import jwt from "jsonwebtoken"
 import { createClient } from "@supabase/supabase-js"
-const cors = require('cors');
 
 const app = express()
 app.use(
