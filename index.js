@@ -12,7 +12,7 @@ app.use(
       "http://127.0.0.1:5500",
       "http://localhost:5500",
       "https://astralproton.github.io/astral",
-      "https://v0.dev",
+      "https://astral-90of.onrender.com",
     ],
     credentials: true,
   }),
