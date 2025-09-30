@@ -14,6 +14,8 @@ app.use(
       "https://astralproton.github.io/astral/",
       "https://astralproton.github.io/astral",
       "https://astralproton.github.io/astral/index.html",
+      "https://astralproton.github.io/",
+      "https://astralproton.github.io",
       "https://astral-90of.onrender.com",
     ],
     credentials: true,
