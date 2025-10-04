@@ -541,6 +541,59 @@ app.post("/usuarios/:id/limpiar-advertencia", verifyToken, async (req, res) => {
   res.json({ success: !error });
 });
 
+// Solicitar relación
+app.post("/relaciones/solicitar", async (req, res) => {
+  const { de, para, tipo } = req.body;
+  if (!de || !para || !tipo || de === para) return res.status(400).json({ error: "Datos inválidos" });
+  // Verifica si ya existe una relación pendiente o aceptada
+  const { data: existente } = await supabase
+    .from("relaciones")
+    .select("*")
+    .or(`and(de.eq.${de},para.eq.${para}),and(de.eq.${para},para.eq.${de})`)
+    .in("estado", ["pendiente", "aceptada"])
+    .maybeSingle();
+  if (existente) return res.status(409).json({ error: "Ya existe una relación o solicitud" });
+  const { error } = await supabase.from("relaciones").insert([{ de, para, tipo, estado: "pendiente", fecha: new Date().toISOString() }]);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+// Listar solicitudes recibidas
+app.get("/relaciones/solicitudes/:userId", async (req, res) => {
+  const { userId } = req.params;
+  const { data, error } = await supabase
+    .from("relaciones")
+    .select("*")
+    .eq("para", userId)
+    .eq("estado", "pendiente");
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// Listar relaciones aceptadas
+app.get("/relaciones/:userId", async (req, res) => {
+  const { userId } = req.params;
+  const { data, error } = await supabase
+    .from("relaciones")
+    .select("*")
+    .or(`de.eq.${userId},para.eq.${userId}`)
+    .eq("estado", "aceptada");
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// Aceptar/rechazar relación
+app.post("/relaciones/responder", async (req, res) => {
+  const { id, aceptar } = req.body;
+  if (!id) return res.status(400).json({ error: "ID requerido" });
+  const { error } = await supabase
+    .from("relaciones")
+    .update({ estado: aceptar ? "aceptada" : "rechazada" })
+    .eq("id", id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`)
 })
