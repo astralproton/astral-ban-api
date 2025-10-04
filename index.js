@@ -520,6 +520,12 @@ app.get("/amigos/mensajes/nuevos", async (req, res) => {
   res.json(data || []);
 });
 
+app.post("/ban", verifyToken, requireRole(["owner", "admin_senior", "admin"]), async (req, res) => {
+  const { id, motivo } = req.body;
+  const { error } = await supabase.from("usuarios").update({ baneado: true, motivo_ban: motivo || null }).eq("id", id);
+  res.json({ success: !error });
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`)
 })
