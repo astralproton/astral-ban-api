@@ -526,6 +526,21 @@ app.post("/ban", verifyToken, requireRole(["owner", "admin_senior", "admin"]), a
   res.json({ success: !error });
 });
 
+// Poner advertencia (solo admin)
+app.post("/usuarios/:id/advertencia", verifyToken, requireRole(["owner", "admin_senior", "admin"]), async (req, res) => {
+  const { id } = req.params;
+  const { advertencia } = req.body;
+  const { error } = await supabase.from("usuarios").update({ advertencia }).eq("id", id);
+  res.json({ success: !error });
+});
+
+// Limpiar advertencia (cuando el usuario la acepta)
+app.post("/usuarios/:id/limpiar-advertencia", verifyToken, async (req, res) => {
+  const { id } = req.params;
+  const { error } = await supabase.from("usuarios").update({ advertencia: null }).eq("id", id);
+  res.json({ success: !error });
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`)
 })
