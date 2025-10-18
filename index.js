@@ -18,7 +18,9 @@ app.use(
       "https://astralproton.github.io",
       "https://astral-90of.onrender.com",
       "https://module-flask.github.io",
-      "https://module-flask.github.io/astral"
+      "https://module-flask.github.io/astral",
+      "https://astrallol.github.io/astral/",
+      "https://astrallol.github.io"
     ],
     credentials: true,
   }),
