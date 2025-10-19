@@ -598,6 +598,77 @@ app.post("/relaciones/responder", async (req, res) => {
   res.json({ success: true });
 });
 
+// --- MODIFICAR verify-token para auto-unban y chequeo ---
+app.get("/verify-token", verifyToken, async (req, res) => {
+  try {
+    // intento de auto-unban si expiró
+    await autoUnbanIfExpired(req.user.userId);
+
+    // volver a leer usuario para estado actualizado
+    const { data: user, error } = await supabase.from('usuarios').select('id, nombre, baneado, ban_until, rol').eq('id', req.user.userId).single();
+    if (error || !user) return res.status(401).json({ valid: false });
+    if (user.baneado) {
+      const remaining = user.ban_until ? Math.max(0, new Date(user.ban_until) - new Date()) : null;
+      return res.status(403).json({ valid: false, banned: true, remainingMs: remaining || null });
+    }
+    res.json({
+      valid: true,
+      user: { id: user.id, name: user.nombre, rol: user.rol || 'usuario' },
+    })
+  } catch (err) {
+    console.error('verify-token error', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+})
+
+// --- EXTENDER endpoint /ban para soportar baneo temporal ---
+// Reemplaza o agrega esta versión (ya tienes /ban; esta versión acepta durationMinutes o until)
+app.post("/ban", verifyToken, requireRole(["owner", "admin_senior", "admin"]), async (req, res) => {
+  try {
+    const { id, motivo, durationMinutes, until } = req.body;
+    if (!id) return res.status(400).json({ error: "id requerido" });
+
+    let ban_until = null;
+    if (until) {
+      // aceptar fecha ISO o timestamp
+      const d = new Date(until);
+      if (!isNaN(d.getTime())) ban_until = d.toISOString();
+    } else if (durationMinutes) {
+      const mins = parseInt(durationMinutes, 10);
+      if (!isNaN(mins) && mins > 0) {
+        ban_until = new Date(Date.now() + mins * 60 * 1000).toISOString();
+      }
+    }
+
+    const updateObj = { baneado: true, motivo_ban: motivo || null };
+    if (ban_until) updateObj.ban_until = ban_until;
+
+    const { error } = await supabase.from("usuarios").update(updateObj).eq("id", id);
+    if (error) {
+      console.error('Error banning user:', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+    res.json({ success: true, ban_until: ban_until || null });
+  } catch (err) {
+    console.error('/ban error', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+})
+
+// --- EXTENDER /unban para limpiar ban_until y motivo ---
+app.post("/unban", verifyToken, requireRole(["owner", "admin_senior", "admin"]), async (req, res) => {
+  try {
+    const { id } = req.body;
+    if (!id) return res.status(400).json({ error: "id requerido" });
+    const { error } = await supabase.from("usuarios").update({ baneado: false, ban_until: null, motivo_ban: null }).eq("id", id);
+    if (error) return res.status(500).json({ success: false, error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('/unban error', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`)
 })
