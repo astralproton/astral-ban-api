@@ -697,6 +697,95 @@ app.post("/api/user/coins/adjust", verifyToken, async (req, res) => {
   }
 });
 
+  // Compra de tienda: deducir monedas y guardar en user_shop_data (usuario propio o admin)
+app.post("/api/user/shop/purchase", verifyToken, async (req, res) => {
+  try {
+    const { userId, type, itemId, price } = req.body;
+    if (!userId || !type || !itemId || typeof price !== "number") {
+      return res.status(400).json({ error: "userId, type, itemId y price son requeridos" });
+    }
+
+    // solo propio usuario o admins pueden forzar compra
+    if (req.user.userId !== userId && !["owner", "admin_senior", "admin"].includes(req.user.rol)) {
+      return res.status(403).json({ error: "No tienes permiso para comprar a nombre de este usuario" });
+    }
+
+    // leer monedas actuales
+    const { data: userRow, error: userErr } = await supabase
+      .from("usuarios")
+      .select("coins")
+      .eq("id", userId)
+      .single();
+    if (userErr) {
+      console.error("Error leyendo usuario para compra:", userErr);
+      return res.status(500).json({ error: "Error leyendo usuario" });
+    }
+    const currentCoins = Number(userRow?.coins || 0);
+    if (currentCoins < price) {
+      return res.status(400).json({ error: "No tienes suficientes estrellas" });
+    }
+
+    // leer datos de tienda del usuario (si no existe, se crea más abajo)
+    const { data: shopRow, error: shopErr } = await supabase
+      .from("user_shop_data")
+      .select("id, shop_data")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (shopErr) {
+      console.error("Error leyendo user_shop_data:", shopErr);
+      return res.status(500).json({ error: "Error leyendo datos de tienda" });
+    }
+    const shopData = shopRow?.shop_data || {};
+
+    // estructura: shopData.themes / .badges / .games -> arrays
+    shopData[type] = Array.isArray(shopData[type]) ? shopData[type] : [];
+
+    if (shopData[type].includes(itemId)) {
+      return res.status(409).json({ error: "Item ya adquirido" });
+    }
+
+    // deducir monedas y actualizar usuario
+    const newCoins = Math.max(0, currentCoins - price);
+    const { error: updateUserErr } = await supabase
+      .from("usuarios")
+      .update({ coins: newCoins, updated_at: new Date().toISOString() })
+      .eq("id", userId);
+    if (updateUserErr) {
+      console.error("Error actualizando monedas:", updateUserErr);
+      return res.status(500).json({ error: "Error actualizando monedas" });
+    }
+
+    // agregar item a shopData y guardar (insertar o actualizar)
+    shopData[type].push(itemId);
+    if (shopRow && shopRow.id) {
+      const { error: updShopErr } = await supabase
+        .from("user_shop_data")
+        .update({ shop_data: shopData, updated_at: new Date().toISOString() })
+        .eq("user_id", userId);
+      if (updShopErr) {
+        console.error("Error actualizando user_shop_data:", updShopErr);
+        // intentar revertir monedas (best-effort)
+        await supabase.from("usuarios").update({ coins: currentCoins }).eq("id", userId);
+        return res.status(500).json({ error: "Error guardando compra" });
+      }
+    } else {
+      const { error: insShopErr } = await supabase
+        .from("user_shop_data")
+        .insert([{ user_id: userId, shop_data: shopData, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }]);
+      if (insShopErr) {
+        console.error("Error insertando user_shop_data:", insShopErr);
+        await supabase.from("usuarios").update({ coins: currentCoins }).eq("id", userId);
+        return res.status(500).json({ error: "Error guardando compra" });
+      }
+    }
+
+    res.json({ success: true, coins: newCoins, shopData });
+  } catch (err) {
+    console.error("/api/user/shop/purchase error", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`)
 })
