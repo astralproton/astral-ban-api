@@ -669,6 +669,34 @@ app.post("/unban", verifyToken, requireRole(["owner", "admin_senior", "admin"]),
   }
 });
 
+// Ajustar monedas por delta (solo propio usuario o admin)
+app.post("/api/user/coins/adjust", verifyToken, async (req, res) => {
+  try {
+    const { userId, delta } = req.body;
+    if (!userId || typeof delta !== "number") return res.status(400).json({ error: "userId y delta son requeridos" });
+
+    // Permitir si el token pertenece al usuario o si es admin/owner/admin_senior
+    if (req.user.userId !== userId && !["owner", "admin_senior", "admin"].includes(req.user.rol)) {
+      return res.status(403).json({ error: "No tienes permisos para modificar esas monedas" });
+    }
+
+    // Leer valor actual
+    const { data, error: selectErr } = await supabase.from("usuarios").select("coins").eq("id", userId).single();
+    if (selectErr) return res.status(500).json({ error: selectErr.message });
+
+    const current = (data && typeof data.coins === "number") ? data.coins : 0;
+    const newCoins = Math.max(0, current + delta);
+
+    const { error: updateErr } = await supabase.from("usuarios").update({ coins: newCoins, updated_at: new Date().toISOString() }).eq("id", userId);
+    if (updateErr) return res.status(500).json({ error: updateErr.message });
+
+    res.json({ success: true, coins: newCoins });
+  } catch (err) {
+    console.error("/api/user/coins/adjust error:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`)
 })
