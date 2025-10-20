@@ -786,6 +786,103 @@ app.post("/api/user/shop/purchase", verifyToken, async (req, res) => {
   }
 });
 
+// Transferir monedas entre usuarios (requiere token del donante)
+app.post("/api/user/coins/transfer", verifyToken, async (req, res) => {
+  try {
+    const { fromUserId, toUserId, amount } = req.body;
+    const amt = parseInt(amount, 10);
+    if (!fromUserId || !toUserId || !Number.isInteger(amt) || amt <= 0) {
+      return res.status(400).json({ error: "fromUserId, toUserId y amount positivos son requeridos" });
+    }
+    // solo el propio usuario puede iniciar la transferencia (o admins en caso)
+    if (req.user.userId !== fromUserId && !["owner","admin_senior","admin"].includes(req.user.rol)) {
+      return res.status(403).json({ error: "No autorizado para transferir desde este usuario" });
+    }
+
+    // Leer sender y receiver
+    const { data: sender, error: sErr } = await supabase.from("usuarios").select("coins").eq("id", fromUserId).single();
+    const { data: receiver, error: rErr } = await supabase.from("usuarios").select("coins").eq("id", toUserId).maybeSingle();
+
+    if (sErr || !sender) return res.status(404).json({ error: "Donante no encontrado" });
+    if (sender.coins === null || sender.coins === undefined) sender.coins = 0;
+    if (sender.coins < amt) return res.status(400).json({ error: "Fondos insuficientes" });
+
+    // Actualizar balances (no es transacción atómica, pero suficiente para uso normal)
+    const newSender = Math.max(0, sender.coins - amt);
+    const { error: updS } = await supabase.from("usuarios").update({ coins: newSender, updated_at: new Date().toISOString() }).eq("id", fromUserId);
+    if (updS) {
+      console.error("Error actualizando donante:", updS);
+      return res.status(500).json({ error: "Error actualizando donante" });
+    }
+
+    // Si no existe receptor, no crear cuenta aquí; devolver error si no existe
+    if (!receiver) {
+      // revertir donante
+      await supabase.from("usuarios").update({ coins: sender.coins }).eq("id", fromUserId);
+      return res.status(404).json({ error: "Usuario receptor no encontrado" });
+    }
+    const newReceiver = (receiver.coins || 0) + amt;
+    const { error: updR } = await supabase.from("usuarios").update({ coins: newReceiver, updated_at: new Date().toISOString() }).eq("id", toUserId);
+    if (updR) {
+      // intentar revertir sender (best-effort)
+      await supabase.from("usuarios").update({ coins: sender.coins }).eq("id", fromUserId);
+      console.error("Error actualizando receptor:", updR);
+      return res.status(500).json({ error: "Error actualizando receptor" });
+    }
+
+    // Guardar notificación al receptor
+    const note = {
+      user_id: toUserId,
+      from_user: fromUserId,
+      type: "donation",
+      amount: amt,
+      message: `${fromUserId} te ha donado ${amt} estrellas`,
+      read: false,
+      created_at: new Date().toISOString()
+    };
+    await supabase.from("notificaciones").insert([note]);
+
+    res.json({ success: true, coins: newSender });
+  } catch (err) {
+    console.error("/api/user/coins/transfer error", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
+// Obtener notificaciones de un usuario (lectura)
+app.get("/api/notifications/:userId", verifyToken, async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    if (!userId) return res.status(400).json({ error: "userId requerido" });
+    if (req.user.userId !== userId && !["owner","admin_senior","admin"].includes(req.user.rol)) {
+      return res.status(403).json({ error: "No autorizado" });
+    }
+    const { data, error } = await supabase.from("notificaciones").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(100);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ notifications: data || [] });
+  } catch (err) {
+    console.error("/api/notifications error", err);
+    res.status(500).json({ error: "Error interno" });
+  }
+});
+
+// Marcar notificación como leída
+app.post("/api/notifications/mark-read", verifyToken, async (req, res) => {
+  try {
+    const { id, userId } = req.body;
+    if (!id || !userId) return res.status(400).json({ error: "id y userId requeridos" });
+    if (req.user.userId !== userId && !["owner","admin_senior","admin"].includes(req.user.rol)) {
+      return res.status(403).json({ error: "No autorizado" });
+    }
+    const { error } = await supabase.from("notificaciones").update({ read: true }).eq("id", id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    console.error("/api/notifications/mark-read error", err);
+    res.status(500).json({ error: "Error interno" });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`)
 })
