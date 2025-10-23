@@ -20,7 +20,8 @@ app.use(
       "https://module-flask.github.io",
       "https://module-flask.github.io/astral",
       "https://astrallol.github.io/astral/",
-      "https://astrallol.github.io"
+      "https://astrallol.github.io",
+      "https://astralbackup.github.io"
     ],
     credentials: true,
   }),
