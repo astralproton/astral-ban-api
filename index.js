@@ -889,7 +889,7 @@ app.post("/api/notifications/mark-read", verifyToken, async (req, res) => {
 // Replace existing /report-user handler with this improved version
 app.post("/report-user", verifyToken, async (req, res) => {
   try {
-    const { reportedId, reason } = req.body;
+    const { reportedId, reason, perdon } = req.body;
     const reporterId = req.user.userId;
 
     if (!reportedId || !reason || String(reason).trim().length === 0) {
@@ -915,7 +915,7 @@ app.post("/report-user", verifyToken, async (req, res) => {
       return res.status(404).json({ error: "Usuario reportado no encontrado" });
     }
 
-    // Inserta reporte con estado 'pending'
+    // Inserta reporte con estado 'pending' y campo 'perdon' (puede ser null o texto)
     const insertObj = {
       reporter_id: reporterId,
       reported_id: reportedId,
@@ -923,6 +923,7 @@ app.post("/report-user", verifyToken, async (req, res) => {
       status: "pending",
       action_taken: null,
       reviewed_by: null,
+      perdon: perdon || null,
       created_at: new Date().toISOString()
     };
 
@@ -943,6 +944,8 @@ app.post("/report-user", verifyToken, async (req, res) => {
     res.status(500).json({ error: "Error interno del servidor" });
   }
 });
+
+// ...existing code...
 
 // Nueva ruta: obtener reportes creados por el usuario (reporter) — requiere token
 app.get("/reports/mine", verifyToken, async (req, res) => {
