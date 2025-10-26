@@ -884,93 +884,93 @@ app.post("/api/notifications/mark-read", verifyToken, async (req, res) => {
   }
 });
 
-// Add after other routes
+// ...existing code...
 
-// Submit a user report
+// Replace existing /report-user handler with this improved version
 app.post("/report-user", verifyToken, async (req, res) => {
   try {
     const { reportedId, reason } = req.body;
     const reporterId = req.user.userId;
 
-    if (!reportedId || !reason) {
-      return res.status(400).json({ error: "ID del usuario y motivo son requeridos" });
+    if (!reportedId || !reason || String(reason).trim().length === 0) {
+      return res.status(400).json({ error: "ID del usuario reportado y motivo son requeridos" });
     }
 
-    // Check if reported user exists
-    const { data: reportedUser } = await supabase
-      .from("usuarios")
-      .select("id")
-      .eq("id", reportedId)
-      .single();
+    if (reporterId === reportedId) {
+      return res.status(400).json({ error: "No puedes reportarte a ti mismo" });
+    }
 
+    // Verificar existencia del usuario reportado (opcional)
+    const { data: reportedUser, error: checkErr } = await supabase
+      .from("usuarios")
+      .select("id, nombre")
+      .eq("id", reportedId)
+      .maybeSingle();
+
+    if (checkErr) {
+      console.error("Error verificando usuario reportado:", checkErr);
+      return res.status(500).json({ error: "Error verificando usuario reportado" });
+    }
     if (!reportedUser) {
       return res.status(404).json({ error: "Usuario reportado no encontrado" });
     }
 
-    // Insert report
-    const { error } = await supabase.from("user_reports").insert([{
+    // Inserta reporte con estado 'pending'
+    const insertObj = {
       reporter_id: reporterId,
-      reported_id: reportedId, 
-      reason: reason,
+      reported_id: reportedId,
+      reason: String(reason).trim().slice(0, 2000),
+      status: "pending",
+      action_taken: null,
+      reviewed_by: null,
       created_at: new Date().toISOString()
-    }]);
+    };
 
-    if (error) {
-      console.error("Error guardando reporte:", error);
+    const { data, error: insertErr } = await supabase
+      .from("user_reports")
+      .insert([insertObj])
+      .select()
+      .single();
+
+    if (insertErr) {
+      console.error("Error guardando reporte:", insertErr);
       return res.status(500).json({ error: "Error guardando reporte" });
     }
 
-    res.json({ success: true });
+    res.json({ success: true, report: data });
   } catch (err) {
     console.error("Error en reporte de usuario:", err);
     res.status(500).json({ error: "Error interno del servidor" });
   }
 });
 
-// Get reports (admin only)
-app.get("/reports", verifyToken, requireRole(["owner", "admin_senior", "admin"]), async (req, res) => {
+// Nueva ruta: obtener reportes creados por el usuario (reporter) — requiere token
+app.get("/reports/mine", verifyToken, async (req, res) => {
   try {
+    const reporterId = req.user.userId;
     const { data, error } = await supabase
       .from("user_reports")
       .select(`
         *,
-        reporter:reporter_id(id, nombre),
         reported:reported_id(id, nombre),
         reviewer:reviewed_by(id, nombre)
       `)
+      .eq("reporter_id", reporterId)
       .order("created_at", { ascending: false });
 
-    if (error) throw error;
-    res.json(data);
+    if (error) {
+      console.error("Error obteniendo reportes del usuario:", error);
+      return res.status(500).json({ error: "Error obteniendo reportes" });
+    }
+    res.json(data || []);
   } catch (err) {
-    console.error("Error obteniendo reportes:", err);
+    console.error("Error en /reports/mine:", err);
     res.status(500).json({ error: "Error interno del servidor" });
   }
 });
 
-// Review a report (admin only)
-app.post("/reports/:id/review", verifyToken, requireRole(["owner", "admin_senior", "admin"]), async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status, action_taken } = req.body;
+// ...existing code...
 
-    const { error } = await supabase
-      .from("user_reports")
-      .update({
-        status,
-        action_taken,
-        reviewed_by: req.user.userId,
-        reviewed_at: new Date().toISOString()
-      })
-      .eq("id", id);
-
-    if (error) throw error;
-    res.json({ success: true });
-  } catch (err) {
-    console.error("Error revisando reporte:", err);
-    res.status(500).json({ error: "Error interno del servidor" });
-  }
-});
 
 app.listen(PORT, () => {
   console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`)
