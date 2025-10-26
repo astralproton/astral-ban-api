@@ -884,6 +884,94 @@ app.post("/api/notifications/mark-read", verifyToken, async (req, res) => {
   }
 });
 
+// Add after other routes
+
+// Submit a user report
+app.post("/report-user", verifyToken, async (req, res) => {
+  try {
+    const { reportedId, reason } = req.body;
+    const reporterId = req.user.userId;
+
+    if (!reportedId || !reason) {
+      return res.status(400).json({ error: "ID del usuario y motivo son requeridos" });
+    }
+
+    // Check if reported user exists
+    const { data: reportedUser } = await supabase
+      .from("usuarios")
+      .select("id")
+      .eq("id", reportedId)
+      .single();
+
+    if (!reportedUser) {
+      return res.status(404).json({ error: "Usuario reportado no encontrado" });
+    }
+
+    // Insert report
+    const { error } = await supabase.from("user_reports").insert([{
+      reporter_id: reporterId,
+      reported_id: reportedId, 
+      reason: reason,
+      created_at: new Date().toISOString()
+    }]);
+
+    if (error) {
+      console.error("Error guardando reporte:", error);
+      return res.status(500).json({ error: "Error guardando reporte" });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Error en reporte de usuario:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
+// Get reports (admin only)
+app.get("/reports", verifyToken, requireRole(["owner", "admin_senior", "admin"]), async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("user_reports")
+      .select(`
+        *,
+        reporter:reporter_id(id, nombre),
+        reported:reported_id(id, nombre),
+        reviewer:reviewed_by(id, nombre)
+      `)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    console.error("Error obteniendo reportes:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
+// Review a report (admin only)
+app.post("/reports/:id/review", verifyToken, requireRole(["owner", "admin_senior", "admin"]), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, action_taken } = req.body;
+
+    const { error } = await supabase
+      .from("user_reports")
+      .update({
+        status,
+        action_taken,
+        reviewed_by: req.user.userId,
+        reviewed_at: new Date().toISOString()
+      })
+      .eq("id", id);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Error revisando reporte:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`)
 })
