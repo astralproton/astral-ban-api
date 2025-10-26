@@ -969,9 +969,6 @@ app.get("/reports/mine", verifyToken, async (req, res) => {
   }
 });
 
-// ...existing code...
-
-
 app.listen(PORT, () => {
   console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`)
 })
