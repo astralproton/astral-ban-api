@@ -1012,6 +1012,46 @@ app.get("/reports/mine", verifyToken, async (req, res) => {
   }
 });
 
+// ...existing code...
+// Nuevo endpoint: reportar bug de juego
+app.post('/report-bug', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    let reporter = null;
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        reporter = decoded.userId || null;
+      } catch (e) {
+        // token inválido -> reporter queda null
+      }
+    }
+    const { gameId, description, steps, screenshot } = req.body;
+    if (!description || !description.trim()) return res.status(400).json({ error: 'description required' });
+
+    const insertObj = {
+      game_id: gameId || null,
+      reporter_id: reporter,
+      description: String(description).slice(0, 4000),
+      steps: steps ? String(steps).slice(0, 4000) : null,
+      screenshot_url: screenshot || null,
+      status: 'pending',
+      created_at: new Date().toISOString()
+    };
+
+    const { error, data } = await supabase.from('bug_reports').insert([insertObj]).select().single();
+    if (error) {
+      console.error('Error inserting bug report:', error);
+      return res.status(500).json({ error: 'Error saving report' });
+    }
+    res.json({ success: true, id: data.id, report: data });
+  } catch (err) {
+    console.error('/report-bug error', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+// ...existing code...
+
 app.listen(PORT, () => {
   console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`)
 })
