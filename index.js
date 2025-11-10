@@ -1050,6 +1050,66 @@ app.post('/report-bug', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// ...existing code...
+
+// Utilidades para la tabla 'astralgeneral'
+async function readMaintenanceFlag() {
+  // intenta leer la fila singleton (id = 1)
+  const { data, error } = await supabase.from('astralgeneral').select('maintenance, message, maintenance_until, updated_at').eq('id', 1).maybeSingle();
+  if (error) {
+    console.error('Error leyendo astralgeneral:', error);
+    return { maintenance: false };
+  }
+  return data || { maintenance: false, message: null, maintenance_until: null };
+}
+
+// Endpoint público: obtener estado de mantenimiento
+app.get('/maintenance', async (req, res) => {
+  try {
+    const info = await readMaintenanceFlag();
+    res.json({
+      maintenance: !!info.maintenance,
+      message: info.message || null,
+      until: info.maintenance_until || null,
+      updated_at: info.updated_at || null
+    });
+  } catch (e) {
+    console.error('/maintenance error', e);
+    res.status(500).json({ maintenance: false, error: 'Error interno' });
+  }
+});
+
+// Endpoint administrativo: activar/desactivar mantenimiento
+// Requiere token y rol owner/admin_senior (o admin)
+app.post('/maintenance', verifyToken, requireRole(['owner','admin_senior','admin']), async (req, res) => {
+  try {
+    const { enabled, message, until } = req.body;
+    if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled (boolean) es requerido' });
+
+    // Construir objeto con id singleton = 1
+    const row = {
+      id: 1,
+      maintenance: enabled,
+      message: message || null,
+      maintenance_until: until || null,
+      updated_at: new Date().toISOString()
+    };
+
+    // Upsert (insert/update) en Supabase
+    const { error } = await supabase.from('astralgeneral').upsert([row], { onConflict: 'id' });
+    if (error) {
+      console.error('/maintenance upsert error', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+
+    res.json({ success: true, maintenance: enabled, message: row.message, until: row.maintenance_until });
+  } catch (err) {
+    console.error('/maintenance error', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
 // ...existing code...
 
 app.listen(PORT, () => {
