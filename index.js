@@ -1110,7 +1110,25 @@ app.post('/maintenance', verifyToken, requireRole(['owner','admin_senior','admin
   }
 });
 
-// ...existing code...
+app.get("/api/game-alerts/:gameId", async (req, res) => {
+  const { gameId } = req.params;
+  const { data, error } = await supabase
+    .from("game_alerts")
+    .select("*")
+    .eq("game_id", gameId);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ alerts: data || [] });
+});
+
+app.post("/api/game-alerts", verifyToken, requireRole(["owner","admin_senior","admin"]), async (req, res) => {
+  const { game_id, alert_type, message, min_age } = req.body;
+  if (!game_id || !alert_type || !message) return res.status(400).json({ error: "Faltan datos" });
+  const { error } = await supabase.from("game_alerts").insert([{
+    game_id, alert_type, message, min_age: min_age || null, created_at: new Date().toISOString()
+  }]);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
 
 app.listen(PORT, () => {
   console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`)
