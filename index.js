@@ -58,9 +58,30 @@ async function leerUsuarios() {
 }
 
 async function guardarUsuario(usuario) {
-  const { error } = await supabase.from("usuarios").insert([usuario])
-  if (error) console.error("Error guardando usuario:", error.message)
-  return !error
+  // Insert user, then ensure a sequential `numero` is assigned if not provided
+  const { data, error } = await supabase.from("usuarios").insert([usuario]).select().single();
+  if (error) {
+    console.error("Error guardando usuario:", error.message)
+    return false
+  }
+
+  try {
+    // If the inserted user does not have a numero, compute next and set it
+    if (!data.numero) {
+      const { data: lastRows, error: lastErr } = await supabase.from('usuarios').select('numero').order('numero', { ascending: false }).limit(1);
+      if (lastErr) console.warn('Could not read last numero', lastErr.message);
+      const lastNum = Array.isArray(lastRows) && lastRows.length ? (lastRows[0].numero || 0) : 0;
+      const nextNum = (lastNum || 0) + 1;
+      const { error: updErr } = await supabase.from('usuarios').update({ numero: nextNum }).eq('id', data.id);
+      if (updErr) {
+        console.warn('Could not update usuario numero:', updErr.message);
+      }
+    }
+  } catch (e) {
+    console.warn('Error ensuring numero on user insert', e);
+  }
+
+  return true
 }
 
 // Middleware para verificar JWT
@@ -646,11 +667,26 @@ app.get("/verify-token", verifyToken, async (req, res) => {
     await autoUnbanIfExpired(req.user.userId);
 
     // volver a leer usuario para estado actualizado
-    const { data: user, error } = await supabase.from('usuarios').select('id, nombre, baneado, ban_until, rol').eq('id', req.user.userId).single();
+    const { data: user, error } = await supabase.from('usuarios').select('id, nombre, baneado, ban_until, rol, numero').eq('id', req.user.userId).single();
     if (error || !user) return res.status(401).json({ valid: false });
     if (user.baneado) {
       const remaining = user.ban_until ? Math.max(0, new Date(user.ban_until) - new Date()) : null;
       return res.status(403).json({ valid: false, banned: true, remainingMs: remaining || null });
+    }
+    // If the user does not yet have a sequential `numero`, assign one now.
+    if (!user.numero) {
+      try {
+        const { data: lastRows, error: lastErr } = await supabase.from('usuarios').select('numero').order('numero', { ascending: false }).limit(1);
+        if (lastErr) console.warn('Could not read last numero', lastErr.message);
+        const lastNum = Array.isArray(lastRows) && lastRows.length ? (lastRows[0].numero || 0) : 0;
+        const nextNum = (lastNum || 0) + 1;
+        const { error: updErr } = await supabase.from('usuarios').update({ numero: nextNum }).eq('id', user.id);
+        if (updErr) console.warn('Could not update user numero on verify-token', updErr.message);
+        // update local user object for response
+        user.numero = nextNum;
+      } catch (e) {
+        console.warn('assign numero on verify failed', e);
+      }
     }
     res.json({
       valid: true,
