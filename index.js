@@ -725,12 +725,54 @@ app.post("/ban", verifyToken, requireRole(["owner", "admin_senior", "admin"]), a
       console.error('Error banning user:', error);
       return res.status(500).json({ success: false, error: error.message });
     }
+
+    // If request includes a notice payload, create a site notice that clients can fetch
+    try{
+      const { notice_message, notice_type, notice_expires_at } = req.body;
+      if (notice_message && String(notice_message).trim().length){
+        const noticeObj = {
+          message: String(notice_message).slice(0,1000),
+          type: (notice_type && ['info','warning','critical'].includes(String(notice_type))) ? String(notice_type) : 'info',
+          created_by: req.user && req.user.userId ? req.user.userId : null,
+          target_user: id || null,
+          expires_at: notice_expires_at || null,
+          active: true
+        };
+        const { error: noticeErr } = await supabase.from('notices').insert([noticeObj]);
+        if (noticeErr) console.warn('Failed to create notice for ban:', noticeErr);
+      }
+    }catch(e){ console.warn('notice insert failed', e); }
+
     res.json({ success: true, ban_until: ban_until || null });
   } catch (err) {
     console.error('/ban error', err);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 })
+
+// Create a site notice (info/warning/critical)
+app.post('/api/notices', verifyToken, requireRole(['owner','admin_senior','admin']), async (req, res) => {
+  try{
+    const { message, type = 'info', target_user = null, expires_at = null } = req.body;
+    if (!message || !String(message).trim()) return res.status(400).json({ error: 'message is required' });
+    const mType = ['info','warning','critical'].includes(String(type)) ? String(type) : 'info';
+    const insertObj = { message: String(message).slice(0,1000), type: mType, created_by: req.user && req.user.userId ? req.user.userId : null, target_user, expires_at, active: true };
+    const { data, error } = await supabase.from('notices').insert([insertObj]).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true, notice: data });
+  }catch(e){ console.error('create notice error', e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
+
+// List active notices (for clients). Returns notices not expired and active.
+app.get('/api/notices', async (req, res) => {
+  try{
+    const { data, error } = await supabase.from('notices').select('*').eq('active', true).order('created_at', { ascending: false }).limit(100);
+    if (error) return res.status(500).json({ error: error.message });
+    const now = new Date().toISOString();
+    const filtered = (data || []).filter(n => (!n.expires_at || n.expires_at > now));
+    res.json(filtered);
+  }catch(e){ console.error('list notices error', e); res.status(500).json({ error: 'Error interno del servidor' }); }
+});
 
 // --- EXTENDER /unban para limpiar ban_until y motivo ---
 app.post("/unban", verifyToken, requireRole(["owner", "admin_senior", "admin"]), async (req, res) => {
