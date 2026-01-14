@@ -1208,6 +1208,46 @@ app.post("/api/game-alerts", verifyToken, requireRole(["owner","admin_senior","a
   res.json({ success: true });
 });
 
+// Sumar monedas por abrir un juego (sin auth, solo userId)
+app.post("/api/user/coins/add-game-reward", async (req, res) => {
+  try {
+    const { userId, amount } = req.body;
+    const amt = parseInt(amount, 10) || 5; // Por defecto 5 monedas
+    
+    if (!userId) {
+      return res.status(400).json({ error: "userId es requerido" });
+    }
+    
+    // Leer valor actual
+    const { data, error: selectErr } = await supabase
+      .from("usuarios")
+      .select("coins")
+      .eq("id", userId)
+      .single();
+    
+    if (selectErr) {
+      return res.status(500).json({ error: selectErr.message });
+    }
+    
+    const current = (data && typeof data.coins === "number") ? data.coins : 0;
+    const newCoins = current + amt;
+    
+    const { error: updateErr } = await supabase
+      .from("usuarios")
+      .update({ coins: newCoins, updated_at: new Date().toISOString() })
+      .eq("id", userId);
+    
+    if (updateErr) {
+      return res.status(500).json({ error: updateErr.message });
+    }
+    
+    res.json({ success: true, coins: newCoins });
+  } catch (err) {
+    console.error("/api/user/coins/add-game-reward error:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`)
 })
