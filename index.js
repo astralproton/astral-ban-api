@@ -146,7 +146,6 @@ app.post("/register", async (req, res) => {
       apellido: null,
       genero: null,
       insignia: null,
-      estrellas: 0,
       rol: "usuario"
     })
     if (success) {
@@ -193,6 +192,9 @@ app.post("/login", async (req, res) => {
     }
     // Generar token JWT con rol
     const token = jwt.sign({ userId: user.id, name: user.nombre, rol: user.rol || "usuario" }, JWT_SECRET, { expiresIn: "7d" })
+    // Actualizar last_seen
+    await supabase.from("usuarios").update({ last_seen: new Date().toISOString() }).eq("id", user.id);
+    console.log(`Updated last_seen for user ${user.id} on login`);
     res.json({
       success: true,
       token,
@@ -216,7 +218,7 @@ app.get("/verify-token", verifyToken, (req, res) => {
 app.post("/usuarios/:id/rol", verifyToken, requireRole(["owner", "admin_senior"]), async (req, res) => {
   const { id } = req.params;
   const { rol } = req.body;
-  const rolesValidos = ["owner", "admin_senior", "admin", "amigo", "usuario"];
+  const rolesValidos = ["owner", "admin_senior", "admin_bajo_custodia", "admin", "amigo", "usuario"];
   if (!rolesValidos.includes(rol)) return res.status(400).json({ error: "Rol inválido" });
   const { error } = await supabase.from("usuarios").update({ rol }).eq("id", id);
   if (error) return res.status(500).json({ error: error.message });
@@ -250,7 +252,6 @@ app.post("/registrar-usuario", async (req, res) => {
     apellido: null,
     genero: null,
     insignia: null,
-    estrellas: 0,
     rol: "usuario"
   })
   success ? res.json({ success: true }) : res.status(500).json({ error: "Error al guardar en Supabase" })
@@ -270,12 +271,12 @@ app.get("/usuarios/:id", async (req, res) => {
   res.json(data)
 })
 
-// Actualizar perfil de usuario (incluye insignia y estrellas)
+// Actualizar perfil de usuario (incluye insignia y titular)
 app.patch("/usuarios/:id", async (req, res) => {
   const { id } = req.params;
-  const { nombre, avatar, bio, edad, apellido, genero, insignia, estrellas } = req.body;
+  const { nombre, avatar, bio, edad, apellido, genero, insignia, titular } = req.body;
   const { error } = await supabase.from("usuarios").update({
-    nombre, avatar, bio, edad, apellido, genero, insignia, estrellas
+    nombre, avatar, bio, edad, apellido, genero, insignia, titular
   }).eq("id", id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
@@ -374,7 +375,7 @@ app.post("/api/user/coins/transfer", verifyToken, async (req, res) => {
       type: "donation",
       amount: amt,
       // si client envía 'message', lo guardamos y lo mostramos en la notificación
-      message: message && String(message).trim().slice(0, 2000) ? String(message).trim().slice(0, 2000) : `${fromUserId} te ha donado ${amt} estrellas`,
+      message: message && String(message).trim().slice(0, 2000) ? String(message).trim().slice(0, 2000) : `${fromUserId} te ha donado ${amt} monedas`,
       read: false,
       created_at: new Date().toISOString()
     };
@@ -688,6 +689,9 @@ app.get("/verify-token", verifyToken, async (req, res) => {
         console.warn('assign numero on verify failed', e);
       }
     }
+    // Actualizar last_seen en cada verificación
+    await supabase.from("usuarios").update({ last_seen: new Date().toISOString() }).eq("id", user.id);
+    console.log(`Updated last_seen for user ${user.id} on verify-token`);
     res.json({
       valid: true,
       user: { id: user.id, name: user.nombre, rol: user.rol || 'usuario' },
@@ -751,22 +755,22 @@ app.post("/ban", verifyToken, requireRole(["owner", "admin_senior", "admin"]), a
 })
 
 // Create a site notice (info/warning/critical)
-app.post('/api/notices', verifyToken, requireRole(['owner','admin_senior','admin']), async (req, res) => {
+app.post('/api/anuncios', verifyToken, requireRole(['owner','admin_senior','admin']), async (req, res) => {
   try{
     const { message, type = 'info', target_user = null, expires_at = null } = req.body;
     if (!message || !String(message).trim()) return res.status(400).json({ error: 'message is required' });
     const mType = ['info','warning','critical'].includes(String(type)) ? String(type) : 'info';
     const insertObj = { message: String(message).slice(0,1000), type: mType, created_by: req.user && req.user.userId ? req.user.userId : null, target_user, expires_at, active: true };
-    const { data, error } = await supabase.from('notices').insert([insertObj]).select().single();
+    const { data, error } = await supabase.from('anuncios').insert([insertObj]).select().single();
     if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true, notice: data });
   }catch(e){ console.error('create notice error', e); res.status(500).json({ error: 'Error interno del servidor' }); }
 });
 
 // List active notices (for clients). Returns notices not expired and active.
-app.get('/api/notices', async (req, res) => {
+app.get('/api/anuncios', async (req, res) => {
   try{
-    const { data, error } = await supabase.from('notices').select('*').eq('active', true).order('created_at', { ascending: false }).limit(100);
+    const { data, error } = await supabase.from('anuncios').select('*').eq('active', true).order('created_at', { ascending: false }).limit(100);
     if (error) return res.status(500).json({ error: error.message });
     const now = new Date().toISOString();
     const filtered = (data || []).filter(n => (!n.expires_at || n.expires_at > now));
@@ -841,7 +845,7 @@ app.post("/api/user/shop/purchase", verifyToken, async (req, res) => {
     }
     const currentCoins = Number(userRow?.coins || 0);
     if (currentCoins < price) {
-      return res.status(400).json({ error: "No tienes suficientes estrellas" });
+      return res.status(400).json({ error: "No tienes suficientes monedas" });
     }
 
     // leer datos de tienda del usuario (si no existe, se crea más abajo)
@@ -955,7 +959,7 @@ app.post("/api/user/coins/transfer", verifyToken, async (req, res) => {
       from_user: fromUserId,
       type: "donation",
       amount: amt,
-      message: `${fromUserId} te ha donado ${amt} estrellas`,
+      message: `${fromUserId} te ha donado ${amt} monedas`,
       read: false,
       created_at: new Date().toISOString()
     };
@@ -1208,44 +1212,10 @@ app.post("/api/game-alerts", verifyToken, requireRole(["owner","admin_senior","a
   res.json({ success: true });
 });
 
-// Sumar monedas por abrir un juego (sin auth, solo userId)
-app.post("/api/user/coins/add-game-reward", async (req, res) => {
-  try {
-    const { userId, amount } = req.body;
-    const amt = parseInt(amount, 10) || 5; // Por defecto 5 monedas
-    
-    if (!userId) {
-      return res.status(400).json({ error: "userId es requerido" });
-    }
-    
-    // Leer valor actual
-    const { data, error: selectErr } = await supabase
-      .from("usuarios")
-      .select("coins")
-      .eq("id", userId)
-      .single();
-    
-    if (selectErr) {
-      return res.status(500).json({ error: selectErr.message });
-    }
-    
-    const current = (data && typeof data.coins === "number") ? data.coins : 0;
-    const newCoins = current + amt;
-    
-    const { error: updateErr } = await supabase
-      .from("usuarios")
-      .update({ coins: newCoins, updated_at: new Date().toISOString() })
-      .eq("id", userId);
-    
-    if (updateErr) {
-      return res.status(500).json({ error: updateErr.message });
-    }
-    
-    res.json({ success: true, coins: newCoins });
-  } catch (err) {
-    console.error("/api/user/coins/add-game-reward error:", err);
-    res.status(500).json({ error: "Error interno del servidor" });
-  }
+// Logout: marcar como offline (no necesario con last_seen, pero opcional)
+app.post("/logout", verifyToken, async (req, res) => {
+  // Opcional: no hacer nada, ya que offline se calcula por last_seen
+  res.json({ success: true });
 });
 
 app.listen(PORT, () => {
