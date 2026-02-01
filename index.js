@@ -1018,7 +1018,7 @@ app.post("/api/notifications/mark-read", verifyToken, async (req, res) => {
 // Replace existing /report-user handler with this improved version
 app.post("/report-user", verifyToken, async (req, res) => {
   try {
-    const { reportedId, reason, perdon } = req.body;
+    const { reportedId, reason } = req.body;
     const reporterId = req.user.userId;
 
     if (!reportedId || !reason || String(reason).trim().length === 0) {
@@ -1044,16 +1044,15 @@ app.post("/report-user", verifyToken, async (req, res) => {
       return res.status(404).json({ error: "Usuario reportado no encontrado" });
     }
 
-    // Inserta reporte en tabla 'reports' con solo campos existentes
+    // Inserta reporte en tabla 'report-user' con campos que existen
     const insertObj = {
       reporter_id: reporterId,
-      reported_id: reportedId,
       reason: String(reason).trim().slice(0, 2000),
       status: "pending"
     };
 
     const { data, error: insertErr } = await supabase
-      .from("reports")
+      .from("report-user")
       .insert([insertObj])
       .select()
       .single();
