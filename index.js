@@ -757,10 +757,17 @@ app.post("/ban", verifyToken, requireRole(["owner", "admin_senior", "admin"]), a
 // Create a site notice (info/warning/critical)
 app.post('/api/anuncios', verifyToken, requireRole(['owner','admin_senior','admin']), async (req, res) => {
   try{
-    const { title, message, type = 'info', target_user = null, expires_at = null } = req.body;
+    const { title, message, type = 'info', expires_at = null } = req.body;
     if (!message || !String(message).trim()) return res.status(400).json({ error: 'message is required' });
     const mType = ['info','warning','critical'].includes(String(type)) ? String(type) : 'info';
-    const insertObj = { title: title ? String(title).slice(0,500) : null, message: String(message).slice(0,1000), type: mType, created_by: req.user && req.user.userId ? req.user.userId : null, target_user, expires_at, active: true };
+    const insertObj = { 
+      title: title ? String(title).slice(0,500) : 'Sin título',
+      message: String(message).slice(0,1000), 
+      type: mType, 
+      created_by: req.user && req.user.userId ? req.user.userId : null, 
+      expires_at: expires_at || null, 
+      active: true 
+    };
     const { data, error } = await supabase.from('anuncios').insert([insertObj]).select().single();
     if (error) return res.status(500).json({ error: error.message });
     res.json({ success: true, notice: data });
