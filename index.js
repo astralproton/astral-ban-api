@@ -1019,7 +1019,13 @@ app.post("/api/notifications/mark-read", verifyToken, async (req, res) => {
 app.post("/report-user", verifyToken, async (req, res) => {
   try {
     const { reportedId, reason, details } = req.body;
-    const reporterId = req.user.userId;
+    const reporterId = req.user?.userId;
+
+    // Validar token y usuario
+    if (!reporterId) {
+      console.error("Token verification failed: userId not found");
+      return res.status(401).json({ error: "Token inválido o usuario no autenticado" });
+    }
 
     if (!reportedId || !reason || String(reason).trim().length === 0) {
       return res.status(400).json({ error: "ID del usuario reportado y motivo son requeridos" });
@@ -1029,7 +1035,7 @@ app.post("/report-user", verifyToken, async (req, res) => {
       return res.status(400).json({ error: "No puedes reportarte a ti mismo" });
     }
 
-    // Verificar existencia del usuario reportado (opcional)
+    // Verificar existencia del usuario reportado
     const { data: reportedUser, error: checkErr } = await supabase
       .from("usuarios")
       .select("id, nombre")
@@ -1044,12 +1050,14 @@ app.post("/report-user", verifyToken, async (req, res) => {
       return res.status(404).json({ error: "Usuario reportado no encontrado" });
     }
 
-    // Inserta reporte en tabla 'report-user' con campos correctos
+    // Inserta reporte en la tabla real 'report-user' (columnas según tu BD)
     const insertObj = {
-      reporter_id: reporterId,
+      reporter: reporterId,
+      reported_id: reportedId,
       reason: String(reason).trim().slice(0, 2000),
       details: details ? String(details).trim().slice(0, 2000) : null,
-      status: "pending"
+      status: "pending",
+      created_at: new Date().toISOString()
     };
 
     const { data, error: insertErr } = await supabase
@@ -1060,7 +1068,8 @@ app.post("/report-user", verifyToken, async (req, res) => {
 
     if (insertErr) {
       console.error("Error guardando reporte:", insertErr);
-      return res.status(500).json({ error: "Error guardando reporte" });
+      console.error("Insert object:", insertObj);
+      return res.status(500).json({ error: "Error guardando reporte: " + (insertErr.message || JSON.stringify(insertErr)) });
     }
 
     res.json({ success: true, report: data });
@@ -1077,18 +1086,14 @@ app.get("/reports/mine", verifyToken, async (req, res) => {
   try {
     const reporterId = req.user.userId;
     const { data, error } = await supabase
-      .from("user_reports")
-      .select(`
-        *,
-        reported:reported_id(id, nombre),
-        reviewer:reviewed_by(id, nombre)
-      `)
-      .eq("reporter_id", reporterId)
+      .from("report-user")
+      .select("*")
+      .eq("reporter", reporterId)
       .order("created_at", { ascending: false });
 
     if (error) {
       console.error("Error obteniendo reportes del usuario:", error);
-      return res.status(500).json({ error: "Error obteniendo reportes" });
+      return res.status(500).json({ error: "Error obteniendo reportes: " + (error.message || JSON.stringify(error)) });
     }
     res.json(data || []);
   } catch (err) {
