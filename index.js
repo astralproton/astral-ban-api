@@ -1044,20 +1044,16 @@ app.post("/report-user", verifyToken, async (req, res) => {
       return res.status(404).json({ error: "Usuario reportado no encontrado" });
     }
 
-    // Inserta reporte con estado 'pending' y campo 'perdon' (puede ser null o texto)
+    // Inserta reporte en tabla 'reports' con solo campos existentes
     const insertObj = {
       reporter_id: reporterId,
       reported_id: reportedId,
       reason: String(reason).trim().slice(0, 2000),
-      status: "pending",
-      action_taken: null,
-      reviewed_by: null,
-      perdon: perdon || null,
-      created_at: new Date().toISOString()
+      status: "pending"
     };
 
     const { data, error: insertErr } = await supabase
-      .from("user_reports")
+      .from("reports")
       .insert([insertObj])
       .select()
       .single();
