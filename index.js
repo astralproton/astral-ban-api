@@ -1018,7 +1018,7 @@ app.post("/api/notifications/mark-read", verifyToken, async (req, res) => {
 // Replace existing /report-user handler with this improved version
 app.post("/report-user", verifyToken, async (req, res) => {
   try {
-    const { reportedId, reason } = req.body;
+    const { reportedId, reason, details } = req.body;
     const reporterId = req.user.userId;
 
     if (!reportedId || !reason || String(reason).trim().length === 0) {
@@ -1044,10 +1044,11 @@ app.post("/report-user", verifyToken, async (req, res) => {
       return res.status(404).json({ error: "Usuario reportado no encontrado" });
     }
 
-    // Inserta reporte en tabla 'report-user' con campos que existen
+    // Inserta reporte en tabla 'report-user' con campos correctos
     const insertObj = {
       reporter_id: reporterId,
       reason: String(reason).trim().slice(0, 2000),
+      details: details ? String(details).trim().slice(0, 2000) : null,
       status: "pending"
     };
 
