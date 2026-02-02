@@ -13,6 +13,7 @@ app.use(
       "http://localhost:5500",
       "https://astralproton.github.io/astral/",
       "https://astralproton.github.io/astral",
+      "https://astralproton1.github.io/astral",
       "https://astralproton.github.io/astral/index.html",
       "https://astralproton.github.io/",
       "https://astralproton.github.io",
