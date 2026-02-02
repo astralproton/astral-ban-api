@@ -23,7 +23,8 @@ app.use(
       "https://astrallol.github.io/astral/",
       "https://astrallol.github.io",
       "https://astralbackup.github.io",
-      "https://ciololxdd.github.io"
+      "https://ciololxdd.github.io",
+      "https://astralproton1.github.io"
     ],
     credentials: true,
   }),
