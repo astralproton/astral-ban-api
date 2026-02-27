@@ -1227,6 +1227,46 @@ app.post("/logout", verifyToken, async (req, res) => {
   res.json({ success: true });
 });
 
+// Guardar tarjeta del usuario
+app.post("/api/user/card", verifyToken, async (req, res) => {
+  try {
+    const { userId, card } = req.body;
+    if (!userId || !card) return res.status(400).json({ error: "userId y card son requeridos" });
+    if (req.user.userId !== userId) return res.status(403).json({ error: "Sin permiso" });
+
+    const { data: existing } = await supabase.from("user_shop_data")
+      .select("id, shop_data").eq("user_id", userId).maybeSingle();
+
+    const shopData = existing?.shop_data || {};
+    shopData.saved_card = card;
+
+    if (existing) {
+      await supabase.from("user_shop_data")
+        .update({ shop_data: shopData, updated_at: new Date().toISOString() })
+        .eq("user_id", userId);
+    } else {
+      await supabase.from("user_shop_data")
+        .insert([{ user_id: userId, shop_data: shopData, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }]);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Error guardando tarjeta" });
+  }
+});
+
+// Obtener tarjeta guardada del usuario
+app.get("/api/user/card", async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ error: "userId requerido" });
+    const { data } = await supabase.from("user_shop_data")
+      .select("shop_data").eq("user_id", userId).maybeSingle();
+    res.json({ card: data?.shop_data?.saved_card || null });
+  } catch (err) {
+    res.status(500).json({ error: "Error obteniendo tarjeta" });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 API Astral corriendo en puerto ${PORT} y conectada a Supabase`)
 })
