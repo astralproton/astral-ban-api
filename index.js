@@ -1227,43 +1227,75 @@ app.post("/logout", verifyToken, async (req, res) => {
   res.json({ success: true });
 });
 
-// Guardar tarjeta del usuario
+// ── Guardar / actualizar tarjeta del usuario ──────────────────────────────
 app.post("/api/user/card", verifyToken, async (req, res) => {
   try {
     const { userId, card } = req.body;
-    if (!userId || !card) return res.status(400).json({ error: "userId y card son requeridos" });
-    if (req.user.userId !== userId) return res.status(403).json({ error: "Sin permiso" });
-
-    const { data: existing } = await supabase.from("user_shop_data")
-      .select("id, shop_data").eq("user_id", userId).maybeSingle();
-
-    const shopData = existing?.shop_data || {};
-    shopData.saved_card = card;
-
-    if (existing) {
-      await supabase.from("user_shop_data")
-        .update({ shop_data: shopData, updated_at: new Date().toISOString() })
-        .eq("user_id", userId);
-    } else {
-      await supabase.from("user_shop_data")
-        .insert([{ user_id: userId, shop_data: shopData, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }]);
+    if (!userId || !card?.number || !card?.name || !card?.expiry || !card?.cvv) {
+      return res.status(400).json({ error: "userId y datos completos de tarjeta son requeridos" });
     }
+
+    // Solo el propio usuario puede guardar su tarjeta
+    if (req.user.userId !== userId) {
+      return res.status(403).json({ error: "Sin permiso" });
+    }
+
+    const payload = {
+      user_id:     userId,
+      card_number: card.number,
+      card_name:   card.name,
+      card_expiry: card.expiry,
+      card_cvv:    card.cvv,
+      updated_at:  new Date().toISOString(),
+    };
+
+    // Upsert: inserta o actualiza si ya existe
+    const { error } = await supabase
+      .from("user_cards")
+      .upsert(payload, { onConflict: "user_id" });
+
+    if (error) {
+      console.error("Error guardando tarjeta:", error);
+      return res.status(500).json({ error: "Error guardando tarjeta" });
+    }
+
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: "Error guardando tarjeta" });
+    console.error("/api/user/card POST error:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
   }
 });
 
-// Obtener tarjeta guardada del usuario
+// ── Obtener tarjeta guardada del usuario ──────────────────────────────────
 app.get("/api/user/card", async (req, res) => {
   try {
     const { userId } = req.query;
     if (!userId) return res.status(400).json({ error: "userId requerido" });
-    const { data } = await supabase.from("user_shop_data")
-      .select("shop_data").eq("user_id", userId).maybeSingle();
-    res.json({ card: data?.shop_data?.saved_card || null });
+
+    const { data, error } = await supabase
+      .from("user_cards")
+      .select("card_number, card_name, card_expiry, card_cvv")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error leyendo tarjeta:", error);
+      return res.status(500).json({ error: "Error leyendo tarjeta" });
+    }
+
+    if (!data) return res.json({ card: null });
+
+    res.json({
+      card: {
+        number: data.card_number,
+        name:   data.card_name,
+        expiry: data.card_expiry,
+        cvv:    data.card_cvv,
+      }
+    });
   } catch (err) {
-    res.status(500).json({ error: "Error obteniendo tarjeta" });
+    console.error("/api/user/card GET error:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
   }
 });
 
