@@ -1299,126 +1299,22 @@ app.get("/api/user/card", async (req, res) => {
   }
 });
 
-
-// ── Compra con tarjeta de otro usuario ─────────────────────────────────────
-// El servidor trae TODAS las tarjetas, compara sin espacios en JS
-// para evitar mismatch por formato (con/sin espacios en DB)
-app.post("/api/user/shop/purchase-with-card", verifyToken, async (req, res) => {
+// ========== LAST SEEN ==========
+// Actualiza last_seen del usuario autenticado — llamado cada 5 minutos desde el frontend
+app.post("/api/user/last-seen", verifyToken, async (req, res) => {
   try {
-    const { beneficiaryUserId, cardNumber, type, itemId, price } = req.body;
-
-    if (!beneficiaryUserId || !cardNumber || !type || !itemId || typeof price !== "number") {
-      return res.status(400).json({ error: "Faltan campos requeridos" });
-    }
-
-    // Solo el propio usuario (o admin) puede iniciar la compra
-    if (req.user.userId !== beneficiaryUserId && !["owner","admin_senior","admin"].includes(req.user.rol)) {
-      return res.status(403).json({ error: "Sin permiso para comprar a nombre de otro usuario" });
-    }
-
-    // Normalizar el número ingresado: solo dígitos
-    const inputDigits = cardNumber.replace(/\D/g, "");
-    if (inputDigits.length < 13) {
-      return res.status(400).json({ error: "Número de tarjeta inválido" });
-    }
-
-    // Traer todas las tarjetas y filtrar en JS (evita problema de espacios en DB)
-    const { data: allCards, error: cardErr } = await supabase
-      .from("user_cards")
-      .select("user_id, card_number");
-
-    if (cardErr) {
-      console.error("Error leyendo user_cards:", cardErr);
-      return res.status(500).json({ error: "Error buscando tarjeta" });
-    }
-
-    // Comparar dígitos solamente (ignora espacios y guiones)
-    const matched = (allCards || []).find(row =>
-      row.card_number.replace(/\D/g, "") === inputDigits
-    );
-
-    if (!matched) {
-      return res.status(404).json({
-        error: "Tarjeta no encontrada. El titular debe abrir su Monedero al menos una vez para registrarla."
-      });
-    }
-
-    const cardOwnerId = matched.user_id;
-
-    // Leer monedas del dueño de la tarjeta
-    const { data: ownerRow, error: ownerErr } = await supabase
+    const userId = req.user.id;
+    const now = new Date().toISOString();
+    const { error } = await supabase
       .from("usuarios")
-      .select("coins")
-      .eq("id", cardOwnerId)
-      .single();
-
-    if (ownerErr || !ownerRow) {
-      return res.status(404).json({ error: "Usuario dueño de la tarjeta no encontrado" });
-    }
-
-    const ownerCoins = Number(ownerRow.coins || 0);
-    if (ownerCoins < price) {
-      return res.status(400).json({
-        error: `El dueño de la tarjeta no tiene suficientes monedas (tiene ${ownerCoins}, se necesitan ${price})`
-      });
-    }
-
-    // Verificar que el beneficiario no tenga ya el item
-    const { data: shopRow, error: shopErr } = await supabase
-      .from("user_shop_data")
-      .select("id, shop_data")
-      .eq("user_id", beneficiaryUserId)
-      .maybeSingle();
-
-    if (shopErr) {
-      return res.status(500).json({ error: "Error leyendo datos de tienda" });
-    }
-
-    const shopData = shopRow?.shop_data || {};
-    shopData[type] = Array.isArray(shopData[type]) ? shopData[type] : [];
-
-    if (shopData[type].includes(itemId)) {
-      return res.status(409).json({ error: "Ya tienes este item" });
-    }
-
-    // Descontar monedas del dueño de la tarjeta
-    const newOwnerCoins = Math.max(0, ownerCoins - price);
-    const { error: deductErr } = await supabase
-      .from("usuarios")
-      .update({ coins: newOwnerCoins, updated_at: new Date().toISOString() })
-      .eq("id", cardOwnerId);
-
-    if (deductErr) {
-      return res.status(500).json({ error: "Error descontando monedas" });
-    }
-
-    // Otorgar el item al beneficiario
-    shopData[type].push(itemId);
-    let saveErr;
-    if (shopRow?.id) {
-      ({ error: saveErr } = await supabase
-        .from("user_shop_data")
-        .update({ shop_data: shopData, updated_at: new Date().toISOString() })
-        .eq("user_id", beneficiaryUserId));
-    } else {
-      ({ error: saveErr } = await supabase
-        .from("user_shop_data")
-        .insert([{ user_id: beneficiaryUserId, shop_data: shopData,
-                   created_at: new Date().toISOString(), updated_at: new Date().toISOString() }]));
-    }
-
-    if (saveErr) {
-      // Revertir monedas si falló el guardado del item
-      await supabase.from("usuarios").update({ coins: ownerCoins }).eq("id", cardOwnerId);
-      return res.status(500).json({ error: "Error guardando compra, monedas revertidas" });
-    }
-
-    console.log(`[purchase-with-card] ${beneficiaryUserId} obtuvo ${itemId} con tarjeta de ${cardOwnerId} (-${price} monedas)`);
-    res.json({ success: true, cardOwnerId, newOwnerCoins, shopData });
-
+      .update({ last_seen: now })
+      .eq("id", userId);
+    if (error) throw error;
+    console.log(`[last-seen] updated for user ${userId} at ${now}`);
+    res.json({ success: true, last_seen: now });
   } catch (err) {
-    console.error("/api/user/shop/purchase-with-card error:", err);
-    res.status(500).json({ error: "Error interno del servidor" });
+    console.error("[last-seen] error:", err.message);
+    res.status(500).json({ error: "Error actualizando last_seen" });
   }
 });
 
