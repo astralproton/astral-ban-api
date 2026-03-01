@@ -1303,7 +1303,8 @@ app.get("/api/user/card", async (req, res) => {
 // Actualiza last_seen del usuario autenticado — llamado cada 5 minutos desde el frontend
 app.post("/api/user/last-seen", verifyToken, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user.userId; // el JWT guarda el id bajo "userId"
+    if (!userId) return res.status(400).json({ error: "userId no encontrado en token" });
     const now = new Date().toISOString();
     const { error } = await supabase
       .from("usuarios")
